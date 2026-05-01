@@ -1,0 +1,132 @@
+trigger:
+  - main
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - README.md
+      - '*.md'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  KARATE_ENV: 'real'
+
+stages:
+
+  - stage: Setup
+    displayName: 'Preparacion del entorno'
+    jobs:
+      - job: VerifyEnvironment
+        steps:
+          - checkout: self
+
+          - task: JavaToolInstaller@0
+            displayName: 'Instalar Java 11'
+            inputs:
+              versionSpec: '11'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          - script: |
+              java -version
+              ./gradlew --version
+            displayName: 'Verificar entorno'
+
+  - stage: Build
+    displayName: 'Build'
+    dependsOn: Setup
+    jobs:
+      - job: Build
+        steps:
+          - checkout: self
+
+          - task: JavaToolInstaller@0
+            displayName: 'Instalar Java 11'
+            inputs:
+              versionSpec: '11'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          - task: Gradle@3
+            displayName: 'Compilar proyecto'
+            inputs:
+              gradleWrapperFile: 'gradlew'
+              tasks: 'clean compileTestJava'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.11'
+              options: '--no-daemon'
+
+  - stage: API_Tests
+    displayName: 'Ejecucion pruebas API'
+    dependsOn: Build
+    jobs:
+      - job: RunTests
+        steps:
+          - checkout: self
+
+          - task: JavaToolInstaller@0
+            displayName: 'Instalar Java 11'
+            inputs:
+              versionSpec: '11'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          - task: Gradle@3
+            displayName: 'Ejecutar tests - API real'
+            inputs:
+              gradleWrapperFile: 'gradlew'
+              tasks: 'test'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.11'
+              options: '--no-daemon'
+            env:
+              KARATE_ENV: 'real'
+            continueOnError: true
+
+          - task: Gradle@3
+            displayName: 'Ejecutar tests - Mock fallback'
+            inputs:
+              gradleWrapperFile: 'gradlew'
+              tasks: 'test'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.11'
+              options: '--no-daemon'
+            env:
+              KARATE_ENV: 'mock'
+            condition: failed()
+            continueOnError: true
+
+  - stage: Publish
+    displayName: 'Publicacion de resultados'
+    dependsOn: API_Tests
+    condition: always()
+    jobs:
+      - job: Publish
+        steps:
+          - task: PublishTestResults@2
+            displayName: 'Resultados JUnit'
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'build/test-results/**/*.xml'
+              testRunTitle: 'Karate API Tests - Build $(Build.BuildId)'
+              mergeTestResults: true
+            condition: always()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Reporte Karate HTML'
+            inputs:
+              pathToPublish: 'build/karate-reports'
+              artifactName: 'karate-report-$(Build.BuildId)'
+            condition: always()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Logs de ejecucion'
+            inputs:
+              pathToPublish: 'build/test-results'
+              artifactName: 'karate-results-$(Build.BuildId)'
+            condition: always()
