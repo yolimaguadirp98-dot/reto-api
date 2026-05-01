@@ -32,17 +32,22 @@ stages:
               jdkArchitectureOption: 'x64'
               jdkSourceOption: 'PreInstalled'
 
+          - script: chmod +x gradlew
+            displayName: 'Permisos gradlew'
+
           - script: |
               java -version
               ./gradlew --version
             displayName: 'Verificar entorno'
 
-  - stage: Build
-    displayName: 'Build'
+  - stage: Build_And_Test_And_Publish
+    displayName: 'Build - Pruebas - Publicacion'
     dependsOn: Setup
     jobs:
-      - job: Build
+      - job: RunAll
+        displayName: 'Compilar, ejecutar y publicar'
         steps:
+
           - checkout: self
 
           - task: JavaToolInstaller@0
@@ -51,6 +56,9 @@ stages:
               versionSpec: '11'
               jdkArchitectureOption: 'x64'
               jdkSourceOption: 'PreInstalled'
+
+          - script: chmod +x gradlew
+            displayName: 'Permisos gradlew'
 
           - task: Gradle@3
             displayName: 'Compilar proyecto'
@@ -60,21 +68,6 @@ stages:
               javaHomeOption: 'JDKVersion'
               jdkVersionOption: '1.11'
               options: '--no-daemon'
-
-  - stage: API_Tests
-    displayName: 'Ejecucion pruebas API'
-    dependsOn: Build
-    jobs:
-      - job: RunTests
-        steps:
-          - checkout: self
-
-          - task: JavaToolInstaller@0
-            displayName: 'Instalar Java 11'
-            inputs:
-              versionSpec: '11'
-              jdkArchitectureOption: 'x64'
-              jdkSourceOption: 'PreInstalled'
 
           - task: Gradle@3
             displayName: 'Ejecutar tests - API real'
@@ -101,15 +94,8 @@ stages:
             condition: failed()
             continueOnError: true
 
-  - stage: Publish
-    displayName: 'Publicacion de resultados'
-    dependsOn: API_Tests
-    condition: always()
-    jobs:
-      - job: Publish
-        steps:
           - task: PublishTestResults@2
-            displayName: 'Resultados JUnit'
+            displayName: 'Publicar resultados JUnit'
             inputs:
               testResultsFormat: 'JUnit'
               testResultsFiles: 'build/test-results/**/*.xml'
@@ -118,14 +104,14 @@ stages:
             condition: always()
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Reporte Karate HTML'
+            displayName: 'Publicar reporte Karate HTML'
             inputs:
               pathToPublish: 'build/karate-reports'
               artifactName: 'karate-report-$(Build.BuildId)'
             condition: always()
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Logs de ejecucion'
+            displayName: 'Publicar logs de ejecucion'
             inputs:
               pathToPublish: 'build/test-results'
               artifactName: 'karate-results-$(Build.BuildId)'
